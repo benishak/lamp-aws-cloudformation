@@ -23,7 +23,7 @@ Highly availabile and scalable secure architecture includes
 
 Read more in the example/mybb_1812/Design.pdf
 
-[<img src="https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png">](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=my-bb-stack&templateURL=https://raw.githubusercontent.com/benishak/lamp-aws-cloudformation/lamp.cf.template.json)
+[<img src="https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png">](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=lamp-stack&templateURL=https://s3.eu-central-1.amazonaws.com/mybb-cx/lamp.cf.template.json)
 
 ## Deployment Hooks
 
@@ -42,7 +42,7 @@ You can specify an URL for a shell script to be executed after installation, suc
 Here is a list of the available Environment Variables that you can use in your beforeinstall and afterinstall script.
 
 | **Variable**       | **Description**                                                           | **Hooks**                   |
-|---------- ---------|---------------------------------------------------------------------------|-----------------------------|
+| ---------- ------: | ------------------------------------------------------------------------: | --------------------------: |
 | X_MYSQL_DUMP       | The location of the SQL Dump file                                         | beforeinstall, afterinstall |
 | X_WORK_DIR         | The location where files are downloaded                                   | afterinstall                |
 | X_WWW_PATH         | The location of apache www/html folder                                    | afterinstall                |
