@@ -42,7 +42,7 @@ You can specify an URL for a shell script to be executed after installation, suc
 Here is a list of the available Environment Variables that you can use in your beforeinstall and afterinstall script.
 
 | **Variable**       | **Description**                                                           | **Hooks**                   |
-| ---------- ------: | ------------------------------------------------------------------------: | --------------------------: |
+| -----------------: | ------------------------------------------------------------------------: | --------------------------: |
 | X_MYSQL_DUMP       | The location of the SQL Dump file                                         | beforeinstall, afterinstall |
 | X_WORK_DIR         | The location where files are downloaded                                   | afterinstall                |
 | X_WWW_PATH         | The location of apache www/html folder                                    | afterinstall                |
