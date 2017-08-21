@@ -15,7 +15,7 @@
           },
           {
               "Label" : { "default" : "AutoScaling Configurations" },
-              "Parameters" : [ "InstanceType", "EC2Capacity", "EC2CapacityMin", "EC2CapacityMax", "ScaleInCPUUtil", "ScaleOutCPUUtil", "EC2ASPeriod" ]
+              "Parameters" : [ "InstanceType", "EC2Capacity", "EC2CapacityMin", "EC2CapacityMax", "ScaleInCPUUtil", "ScaleOutCPUUtil", "EC2ASPeriod", "EC2ASHealthCheckPath", "EC2ASHealthCheckPort" ]
           }
       ],
       "ParameterLabels": {
@@ -40,7 +40,9 @@
         "EC2ASPeriod" : { "default" : "AutoScaling Period" },
         "RDSDeletionPolicy" : { "default" : "RDS Deletion Policy" },
         "EC2CapacityMin" : { "default" : "EC2 AutoScaling Minimum Capacity" },
-        "EC2CapacityMax" : { "default" : "EC2 AutoScaling Maximum Capacity" }
+        "EC2CapacityMax" : { "default" : "EC2 AutoScaling Maximum Capacity" },
+        "EC2ASHealthCheckPath" : { "default" : "EC2 Health Check Port" },
+        "EC2ASHealthCheckPort" : { "default" : "EC2 Health Check Port" }
       }
     }
   },
@@ -339,6 +341,23 @@
       "MinValue": "1",
       "Default": "300",
       "ConstraintDescription" : "Must be >=1!"
+    },
+
+    "EC2ASHealthCheckPath": {
+      "Type": "String",
+      "Description" : "Health Check path e.g. for http://domain.com/ use '/' for http://domain.com/home use '/home/'",
+      "Default": "/",
+      "MinLength": "1",
+      "ConstraintDescription" : "Must be a valid path"
+    },
+
+    "EC2ASHealthCheckPort": {
+      "Type": "Number",
+      "Description" : "ELB Listening and Health Check Port (0-65535)",
+      "MinValue": "0",
+      "MaxValue": "65535",
+      "Default": "80",
+      "ConstraintDescription" : "Must be a valid port between 0 and 65535"
     }
   },
 
@@ -747,8 +766,9 @@
       "Properties" : {
         "HealthCheckIntervalSeconds" : 10,
         "HealthCheckTimeoutSeconds" : 5,
+        "HealthCheckPath" : { "Ref": "EC2ASHealthCheckPath" },
         "HealthyThresholdCount" : 2,
-        "Port" : 80,
+        "Port" : { "Ref": "EC2ASHealthCheckPort" },
         "Protocol" : "HTTP",
         "UnhealthyThresholdCount" : 5,
         "VpcId" : {"Ref" : "VPC"},
