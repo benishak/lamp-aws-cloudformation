@@ -1,0 +1,1100 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "CloudFormation template for highly available and scalable LAMP Stack Deployment.",
+  "Metadata" : {
+    "AWS::CloudFormation::Interface" : {
+      "ParameterGroups": [
+          {
+              "Label" : { "default" : "Application Configurations" },
+              "Parameters" : [ "AppName", "AppSource", "ConfigSource", "MySQLDump", "BeforeInstall", "AfterInstall", "OpsEmail", "LoginUsername", "LoginPassword" ]
+          },
+          {
+              "Label" : { "default" : "RDS Configurations" },
+              "Parameters" : [ "DBInstanceClass", "DBStorage", "RDSDeletionPolicy", "DBName", "DBUser", "DBPassword" ]
+          },
+          {
+              "Label" : { "default" : "AutoScaling Configurations" },
+              "Parameters" : [ "InstanceType", "EC2Capacity", "EC2CapacityMin", "EC2CapacityMax", "ScaleInCPUUtil", "ScaleOutCPUUtil", "EC2ASPeriod" ]
+          }
+      ],
+      "ParameterLabels": {
+        "AppName" : { "default" : "Application Name" },
+        "AppSource" : { "default" : "Source Code" },
+        "LoginUsername" : { "default" : "Admin Login Username" },
+        "LoginPassword" : { "default" : "Admin Login Password" },
+        "ConfigSource" : { "default" : "Config files" },
+        "MySQLDump" : { "default" : "MySQL Dump" },
+        "BeforeInstall" : { "default" : "Before Install script (bash)" },
+        "AfterInstall" : { "default" : "After Install script (bash)" },
+        "OpsEmail" : { "default" : "Admin Email" },
+        "DBName" : { "default" : "Database name" },
+        "DBUser" : { "default" : "Database user" },
+        "DBPassword" : { "default" : "Database password" },
+        "DBStorage" : { "default" : "Database Storage" },
+        "DBInstanceClass" : { "default" : "Database RDS Instance Class" },
+        "InstanceType" : { "default" : "EC2 Instance Type" },
+        "EC2Capacity" : { "default" : "EC2 AutoScaling Desired Capacity" },
+        "ScaleInCPUUtil" : { "default" : "Scale in when CPU Usage >=" },
+        "ScaleOutCPUUtil" : { "default" : "Sclae out when CPU Usage <=" },
+        "EC2ASPeriod" : { "default" : "AutoScaling Period" },
+        "RDSDeletionPolicy" : { "default" : "RDS Deletion Policy" },
+        "EC2CapacityMin" : { "default" : "EC2 AutoScaling Minimum Capacity" },
+        "EC2CapacityMax" : { "default" : "EC2 AutoScaling Maximum Capacity" }
+      }
+    }
+  },
+  "Outputs" : {
+    "URL" : {
+      "Description" : "ELB Endpoint",
+      "Value" : { "Fn::Join" : [ "", [
+        "http://",
+        { "Fn::GetAtt" : [ "ApplicationLoadBalancer", "DNSName" ] }
+      ]]}
+    },
+    "DBEndpoint" : {
+      "Description" : "MySQL Endpoint",
+      "Value" : { "Fn::Join" : [ "", [
+        { "Fn::GetAtt": [ "MySQLDatabase", "Endpoint.Address" ] }, ":3306"
+      ]]}
+    },
+    "DBUser" : {
+      "Description" : "MySQL Username",
+      "Value" : { "Ref" : "DBUser" }
+    },
+    "DBName" : {
+      "Description" : "MySQL Database name",
+      "Value" : { "Ref" : "DBName" }
+    },
+    "ApplicationName" : {
+      "Description" : "Application Name",
+      "Value" : { "Ref" : "AppName" }
+    },
+    "Stack" : {
+      "Description" : "Stack",
+      "Value" : "LAMP"
+    },
+    "AMIVersion" : {
+      "Description" : "AMI Version",
+      "Value" : { "Fn::FindInMap" : [
+        "AWSRegionArch2AMI",
+        { "Ref" : "AWS::Region" },
+        { "Fn::FindInMap" : [
+          "AWSInstanceType2Arch",
+          { "Ref" : "InstanceType" },
+          "Arch"
+        ]}
+      ]}
+    },
+    "LoginUser" : {
+      "Description" : "Admin Login",
+      "Value" : { "Ref" : "LoginUsername" }
+    },
+    "AppEMail" : {
+      "Description" : "Admin Email",
+      "Value" : { "Ref" : "OpsEmail" }
+    },
+    "AppSourceCode" : {
+      "Description" : "Application Source Code",
+      "Value" : { "Ref" : "AppSource" }
+    },
+    "RDSEngine" : {
+      "Description" : "RDS Engine",
+      "Value" : "MySQL"
+    },
+    "RDSInstanceClass" : {
+      "Description" : "RDS Instance Class",
+      "Value" : { "Ref" : "DBInstanceClass" }
+    },
+    "EC2InstanceType" : {
+      "Description" : "AutoScaling Group EC2 Instance Type",
+      "Value" : { "Ref" : "InstanceType" }
+    },
+    "EC2ASDesired" : {
+      "Description" : "AutoScaling Group desired size",
+      "Value" : { "Ref" : "EC2Capacity" }
+    },
+    "EC2ASMin" : {
+      "Description" : "AutoScaling Group minimum size",
+      "Value" : { "Ref" : "EC2CapacityMin" }
+    },
+    "EC2ASMax" : {
+      "Description" : "AutoScaling Group maximum size",
+      "Value" : { "Ref" : "EC2CapacityMax" }
+    }
+  },
+
+  "Parameters" : {
+
+    "AppName": {
+      "Type": "String",
+      "MinLength": "4",
+      "MaxLength": "128",
+      "Default": "My PHP Application"
+    },
+
+    "AppSource": {
+      "Type": "String",
+      "Description": ".tar.gz file",
+      "Default": "https://github.com/mybb/mybb/tarball/mybb_1812",
+      "ConstraintDescription": "Must be a valid url!"
+    },
+
+    "ConfigSource": {
+      "Type": "String",
+      "Description": "config files (.tar.gz)",
+      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/mybb.tar.gz",
+      "ConstraintDescription": "Must be a valid url!"
+    },
+
+    "MySQLDump": {
+      "Type": "String",
+      "Description": "MySQL dump file (mybb.sql)",
+      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/mybb.sql",
+      "ConstraintDescription": "Must be a valid url!"
+    },
+
+    "BeforeInstall": {
+      "Type": "String",
+      "Description": "Before install script",
+      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/beforeinstall.sh",
+      "ConstraintDescription": "Must be a valid url!"
+    },
+
+    "AfterInstall": {
+      "Type": "String",
+      "Description": "After install script",
+      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/afterinstall.sh",
+      "ConstraintDescription": "Must be a valid url!"
+    },
+
+    "OpsEmail": {
+      "Type": "String",
+      "Description": "E-Mail address for SNS Notification/Admin login",
+      "AllowedPattern": "([a-zA-Z0-9_\\-\\.]+)@((\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(([a-zA-Z0-9\\-]+\\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\\]?)",
+      "Default": "admin@notify.me",
+      "ConstraintDescription": "Must be a valid email address."
+    },
+
+    "LoginUsername": {
+      "Type": "String",
+      "Description": "Optional username/email for admin login, if any",
+      "Default": "admin"
+    },
+
+    "LoginPassword": {
+      "NoEcho": "true",
+      "Type": "String",
+      "Description": "Optional password for admin login, if any"
+    },
+
+    "DBName": {
+      "Type": "String",
+      "Description" : "MySQL Database name",
+      "MinLength": "4",
+      "MaxLength": "64",
+      "AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+      "Default": "mybb",
+      "ConstraintDescription" : "Alphanumeric characters cannot start with a number!"
+    },
+
+    "DBUser": {
+      "Type": "String",
+      "Description" : "MySQL Username",
+      "MinLength": "4",
+      "MaxLength": "16",
+      "AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+      "Default": "root",
+      "ConstraintDescription" : "Alphanumeric characters cannot start with a number!"
+    },
+
+    "DBPassword": {
+      "NoEcho": "true",
+      "Type": "String",
+      "Description" : "MySQL Password (Minimum 8)",
+      "MinLength": "8",
+      "ConstraintDescription" : "The given password is too short!"
+    },
+
+    "DBStorage": {
+      "Type": "Number",
+      "Description" : "The size of the Database Storage (GB), >= 100GB is recommended",
+      "MinValue": "25",
+      "MaxValue": "6144",
+      "Default": "25",
+      "ConstraintDescription" : "Must be between 25 and 6144 GB!"
+    },
+
+    "DBInstanceClass": {
+      "Type": "String",
+      "Description" : "The Database Instance Type",
+      "AllowedValues" : [
+        "db.t2.micro",
+        "db.t2.small",
+        "db.t2.medium",
+        "db.t2.large",
+        "db.m3.medium",
+        "db.m4.large",
+        "db.m4.xlarge",
+        "db.m4.2xlarge",
+        "db.m4.4xlarge",
+        "db.m4.10xlarge",
+        "db.r3.large",
+        "db.r3.xlarge",
+        "db.r3.2xlarge",
+        "db.r3.4xlarge",
+        "db.r3.8xlarge"
+      ],
+      "Default": "db.t2.micro",
+      "ConstraintDescription" : "You Must select an Instance Type!"
+    },
+
+    "RDSDeletionPolicy": {
+      "Description" : "What happens after deleting the stack? Snapshot is recommended",
+      "Type" : "String",
+      "Default" : "Snapshot",
+      "AllowedValues" : [ "Delete", "Retain", "Snapshot" ]
+    },
+
+    "InstanceType" : {
+      "Description" : "EC2 Instance Type",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : [
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "t2.large",
+        "m4.large",
+        "m4.xlarge",
+        "m4.2xlarge",
+        "m4.4xlarge",
+        "m4.10xlarge",
+        "c4.large",
+        "c4.xlarge",
+        "c4.2xlarge",
+        "c4.4xlarge",
+        "c4.8xlarge",
+        "m3.medium",
+        "m3.large",
+        "m3.xlarge",
+        "m3.2xlarge",
+        "c3.large",
+        "c3.xlarge",
+        "c3.2xlarge",
+        "c3.4xlarge",
+        "c3.8xlarge"
+      ],
+      "ConstraintDescription" : "Must be a valid EC2 Instance Type!"
+    },
+
+    "EC2Capacity": {
+      "Type": "Number",
+      "Description" : "EC2 instances count (Minimum 2 for High Availability).",
+      "MinValue": "2",
+      "MaxValue": "10",
+      "Default": "2",
+      "ConstraintDescription" : "Must be between 2 and 10 EC2 instances."
+    },
+
+    "EC2CapacityMin": {
+      "Type": "Number",
+      "Description" : "EC2 instances count (2 is recommended for High Availability).",
+      "MinValue": "1",
+      "MaxValue": "1000",
+      "Default": "2",
+      "ConstraintDescription" : "Must be between 1 and 1000 EC2 instances."
+    },
+
+    "EC2CapacityMax": {
+      "Type": "Number",
+      "Description" : "EC2 instances maximum count",
+      "MinValue": "3",
+      "MaxValue": "1000",
+      "Default": "10",
+      "ConstraintDescription" : "Must be between 3 and 1000 EC2 instances."
+    },
+
+    "ScaleInCPUUtil": {
+      "Type": "Number",
+      "Description" : "Scale in when CPU Util. goes below",
+      "MinValue": "5",
+      "MaxValue": "100",
+      "Default": "35",
+      "ConstraintDescription" : "Must be a between 5 and 100!"
+    },
+
+    "ScaleOutCPUUtil": {
+      "Type": "Number",
+      "Description" : "Scale out when CPU Util. goes above",
+      "MinValue": "5",
+      "MaxValue": "100",
+      "Default": "65",
+      "ConstraintDescription" : "Must be a between 5 and 100!"
+    },
+
+    "EC2ASPeriod": {
+      "Type": "Number",
+      "Description" : "Auto-Scaling Period in seconds (300 is recommended)",
+      "MinValue": "1",
+      "Default": "300",
+      "ConstraintDescription" : "Must be >=1!"
+    }
+  },
+
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+      "t2.micro"    : { "Arch" : "64" },
+      "t2.small"    : { "Arch" : "64" },
+      "t2.medium"   : { "Arch" : "64" },
+      "t2.large"    : { "Arch" : "64" },
+      "m4.large"    : { "Arch" : "64" },
+      "m4.xlarge"   : { "Arch" : "64" },
+      "m4.2xlarge"  : { "Arch" : "64" },
+      "m4.4xlarge"  : { "Arch" : "64" },
+      "m4.10xlarge" : { "Arch" : "64" },
+      "c4.large"    : { "Arch" : "64" },
+      "c4.xlarge"   : { "Arch" : "64" },
+      "c4.2xlarge"  : { "Arch" : "64" },
+      "c4.4xlarge"  : { "Arch" : "64" },
+      "c4.8xlarge"  : { "Arch" : "64" },
+      "m3.medium"   : { "Arch" : "64" },
+      "m3.large"    : { "Arch" : "64" },
+      "m3.xlarge"   : { "Arch" : "64" },
+      "m3.2xlarge"  : { "Arch" : "64" },
+      "c3.large"    : { "Arch" : "64" },
+      "c3.xlarge"   : { "Arch" : "64" },
+      "c3.2xlarge"  : { "Arch" : "64" },
+      "c3.4xlarge"  : { "Arch" : "64" },
+      "c3.8xlarge"  : { "Arch" : "64" }
+    },
+
+    "AWSRegionArch2AMI": {
+      "us-east-1"      : { "64" : "ami-a4c7edb2" },
+      "us-east-2"      : { "64" : "ami-8a7859ef" },
+      "us-west-1"      : { "64" : "ami-6df1e514" },
+      "us-west-2"      : { "64" : "ami-327f5352" },
+      "ca-central-1"   : { "64" : "ami-a7aa15c3" },
+      "eu-west-1"      : { "64" : "ami-d7b9a2b1" },
+      "eu-west-2"      : { "64" : "ami-ed100689" },
+      "eu-central-1"   : { "64" : "ami-82be18ed" },
+      "ap-southeast-1" : { "64" : "ami-77af2014" },
+      "ap-southeast-2" : { "64" : "ami-10918173" },
+      "ap-northeast-1" : { "64" : "ami-3bd3c45c" },
+      "ap-northeast-2" : { "64" : "ami-e21cc38c" },
+      "ap-south-1"     : { "64" : "ami-47205e28" },
+      "sa-east-1"      : { "64" : "ami-87dab1eb" }
+    },
+
+    "Region2Principal": {
+      "us-east-1"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "us-east-2"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "us-west-1"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "us-west-2"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "ca-central-1"   : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "eu-west-1"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "eu-west-2"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "eu-central-1"   : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "ap-southeast-1" : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "ap-southeast-2" : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "ap-northeast-1" : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "ap-northeast-2" : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "ap-south-1"     : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    },
+      "sa-east-1"      : { "EC2Principal" : "ec2.amazonaws.com",    "OpsWorksPrincipal" : "opsworks.amazonaws.com"    }
+    },
+
+    "Region2ARNPrefix": {
+      "us-east-1"      : { "ARNPrefix": "arn:aws:"    },
+      "us-east-2"      : { "ARNPrefix": "arn:aws:"    },
+      "us-west-1"      : { "ARNPrefix": "arn:aws:"    },
+      "us-west-2"      : { "ARNPrefix": "arn:aws:"    },
+      "ca-central-1"   : { "ARNPrefix": "arn:aws:"    },
+      "eu-west-1"      : { "ARNPrefix": "arn:aws:"    },
+      "eu-west-2"      : { "ARNPrefix": "arn:aws:"    },
+      "eu-central-1"   : { "ARNPrefix": "arn:aws:"    },
+      "ap-northeast-1" : { "ARNPrefix": "arn:aws:"    },
+      "ap-northeast-2" : { "ARNPrefix": "arn:aws:"    },
+      "ap-southeast-1" : { "ARNPrefix": "arn:aws:"    },
+      "ap-southeast-2" : { "ARNPrefix": "arn:aws:"    },
+      "sa-east-1"      : { "ARNPrefix": "arn:aws:"    }
+    }
+  },
+
+  "Resources" : {
+
+    "VPC" : {
+      "Type" : "AWS::EC2::VPC",
+      "Properties" : {
+        "CidrBlock" : "10.0.0.0/16",
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Main VPC" }
+        ]
+      }
+    },
+
+    "PublicSubnetA" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Select" : [ "0", { "Fn::GetAZs" : "" } ] },
+        "CidrBlock" : "10.0.0.0/24",
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Public A" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "PublicSubnetB" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Select" : [ "1", { "Fn::GetAZs" : "" } ] },
+        "CidrBlock" : "10.0.1.0/24",
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Public B" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "InternetGateway" : {
+      "Type" : "AWS::EC2::InternetGateway"
+    },
+
+    "natGW0" : {
+      "DependsOn" : ["IGWAttachment", "EIP0"],
+      "Type" : "AWS::EC2::NatGateway",
+      "Properties" : {
+        "AllocationId" : { "Fn::GetAtt" : ["EIP0", "AllocationId"]},
+        "SubnetId" : { "Ref" : "PublicSubnetA"}
+      }
+    },
+
+    "natGW1" : {
+      "DependsOn" : ["IGWAttachment", "EIP1"],
+      "Type" : "AWS::EC2::NatGateway",
+      "Properties" : {
+        "AllocationId" : { "Fn::GetAtt" : ["EIP1", "AllocationId"]},
+        "SubnetId" : { "Ref" : "PublicSubnetB"}
+      }
+    },
+
+    "EIP0" : {
+      "Type" : "AWS::EC2::EIP",
+      "Properties" : {
+        "Domain" : "vpc"
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "EIP1" : {
+      "Type" : "AWS::EC2::EIP",
+      "Properties" : {
+        "Domain" : "vpc"
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "IGWAttachment" : {
+       "Type" : "AWS::EC2::VPCGatewayAttachment",
+       "Properties" : {
+         "VpcId" : { "Ref" : "VPC" },
+         "InternetGatewayId" : { "Ref" : "InternetGateway" }
+       },
+       "DependsOn" : [
+         "VPC",
+         "InternetGateway"
+       ]
+    },
+
+    "PublicRouteTable" : {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Public" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "PublicRoute" : {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "PublicRouteTable" },
+        "DestinationCidrBlock" : "0.0.0.0/0",
+        "GatewayId" : { "Ref" : "InternetGateway" }
+      },
+      "DependsOn" : [
+        "IGWAttachment",
+        "PublicRouteTable"
+      ]
+    },
+
+    "PublicSubnetARouteTableAssociation" : {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "SubnetId" : { "Ref" : "PublicSubnetA" },
+        "RouteTableId" : { "Ref" : "PublicRouteTable" }
+      },
+      "DependsOn" : [
+        "PublicSubnetA",
+        "PublicRouteTable"
+      ]
+    },
+
+    "PublicSubnetBRouteTableAssociation" : {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "SubnetId" : { "Ref" : "PublicSubnetB" },
+        "RouteTableId" : { "Ref" : "PublicRouteTable" }
+      },
+      "DependsOn" : [
+        "PublicSubnetB",
+        "PublicRouteTable"
+      ]
+    },
+
+    "PrivateSubnetA" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Select" : [ "0", { "Fn::GetAZs" : "" } ] },
+        "CidrBlock" : "10.0.2.0/24",
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Private A" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "PrivateSubnetB" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Select" : [ "1", { "Fn::GetAZs" : "" } ] },
+        "CidrBlock" : "10.0.3.0/24",
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Private B" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "PrivateRouteA" : {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "PrivateRouteTableA" },
+        "DestinationCidrBlock" : "0.0.0.0/0",
+        "NatGatewayId" : { "Ref" : "natGW0" }
+      },
+      "DependsOn" : [
+        "IGWAttachment",
+        "PrivateRouteTableA",
+        "natGW0"
+      ]
+    },
+
+    "PrivateRouteB" : {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "PrivateRouteTableB" },
+        "DestinationCidrBlock" : "0.0.0.0/0",
+        "NatGatewayId" : { "Ref" : "natGW1" }
+      },
+      "DependsOn" : [
+        "IGWAttachment",
+        "PrivateRouteTableB",
+        "natGW1"
+      ]
+    },
+
+    "PrivateRouteTableA" : {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Private A" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "PrivateRouteTableB" : {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Name", "Value" : "Private B" }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "PrivateSubnetARouteTableAssociation" : {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "SubnetId" : { "Ref" : "PrivateSubnetA" },
+        "RouteTableId" : { "Ref" : "PrivateRouteTableA" }
+      },
+      "DependsOn" : [
+        "PrivateSubnetA",
+        "PrivateRouteTableA"
+      ]
+    },
+
+    "PrivateSubnetBRouteTableAssociation" : {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "SubnetId" : { "Ref" : "PrivateSubnetB" },
+        "RouteTableId" : { "Ref" : "PrivateRouteTableB" }
+      },
+      "DependsOn" : [
+        "PrivateSubnetB",
+        "PrivateRouteTableB"
+      ]
+    },
+
+    "DBSubnetGroup" : {
+      "Type" : "AWS::RDS::DBSubnetGroup",
+      "Properties" : {
+        "DBSubnetGroupDescription" : "RDS Subnets Group",
+        "SubnetIds" : [
+          { "Ref" : "PrivateSubnetA"},
+          { "Ref" : "PrivateSubnetB"}
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "DBEC2SecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription": "Allow Traffic from EC2",
+        "SecurityGroupIngress" : [{
+          "IpProtocol" : "tcp",
+          "FromPort" : "3306",
+          "ToPort" : "3306",
+          "SourceSecurityGroupId" : { "Ref" : "EC2SecurityGroup" }
+        }],
+        "VpcId" : { "Ref" : "VPC" }
+      },
+      "DependsOn" : [
+        "VPC"
+      ]
+    },
+
+    "MySQLDatabase": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "AllocatedStorage": { "Ref" : "DBStorage" },
+        "DBInstanceClass": { "Ref" : "DBInstanceClass" },
+        "DBSubnetGroupName" : { "Ref" : "DBSubnetGroup" },
+        "DBName" : { "Ref": "DBName" },
+        "MasterUsername": { "Ref": "DBUser" },
+        "MasterUserPassword": { "Ref" : "DBPassword" },
+        "Engine" : "MySQL",
+        "MultiAZ" : "true",
+        "VPCSecurityGroups" : [ { "Fn::GetAtt": [ "DBEC2SecurityGroup", "GroupId" ] } ]
+      },
+      "DeletionPolicy": "Snapshot",
+      "DependsOn" : [
+        "PrivateSubnetA",
+        "PrivateSubnetB",
+        "DBSubnetGroup",
+        "DBEC2SecurityGroup"
+      ]
+    },
+
+    "ApplicationLoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties" : {
+        "SecurityGroups": [
+            { "Ref": "ELBSecurityGroup" }
+        ],
+        "Subnets" : [
+          { "Ref" : "PublicSubnetA" },
+          { "Ref" : "PublicSubnetB" }
+        ]
+      },
+      "DependsOn" : [
+        "PublicSubnetA",
+        "PublicSubnetB",
+        "PrivateSubnetA",
+        "PrivateSubnetB",
+        "IGWAttachment",
+        "MySQLDatabase",
+        "natGW0", "natGW1"
+      ]
+    },
+
+    "ALBListener" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties" : {
+        "DefaultActions" : [{
+          "Type" : "forward",
+          "TargetGroupArn" : { "Ref" : "ALBTargetGroup" }
+        }],
+        "LoadBalancerArn" : { "Ref" : "ApplicationLoadBalancer" },
+        "Port" : "80",
+        "Protocol" : "HTTP"
+      }
+    },
+
+    "ALBTargetGroup" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties" : {
+        "HealthCheckIntervalSeconds" : 10,
+        "HealthCheckTimeoutSeconds" : 5,
+        "HealthyThresholdCount" : 2,
+        "Port" : 80,
+        "Protocol" : "HTTP",
+        "UnhealthyThresholdCount" : 5,
+        "VpcId" : {"Ref" : "VPC"},
+        "TargetGroupAttributes" :
+          [ { "Key" : "stickiness.enabled", "Value" : "true" },
+            { "Key" : "stickiness.type", "Value" : "lb_cookie" },
+            { "Key" : "stickiness.lb_cookie.duration_seconds", "Value" : "30" }
+        ]
+      }
+    },
+
+    "EC2ASGroup" : {
+      "Type" : "AWS::AutoScaling::AutoScalingGroup",
+      "Properties" : {
+        "VPCZoneIdentifier" : [
+          { "Ref" : "PrivateSubnetA" },
+          { "Ref" : "PrivateSubnetB" }
+        ],
+        "LaunchConfigurationName" : { "Ref" : "LaunchConfig" },
+        "MinSize" : { "Ref" : "EC2CapacityMin" },
+        "MaxSize" : { "Ref" : "EC2CapacityMax" },
+        "DesiredCapacity" : { "Ref" : "EC2Capacity" },
+        "TargetGroupARNs" : [ { "Ref" : "ALBTargetGroup" } ],
+        "NotificationConfigurations" : [{
+          "TopicARN" : { "Ref" : "SNSTopic" },
+          "NotificationTypes" : [
+            "autoscaling:EC2_INSTANCE_LAUNCH",
+            "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+            "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+          ]
+        }]
+      },
+      "CreationPolicy" : {
+        "ResourceSignal" : {
+          "Timeout" : "PT5M",
+          "Count"   : { "Ref" : "EC2Capacity" }
+        }
+      },
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "MinInstancesInService": "1",
+          "MaxBatchSize": "1",
+          "PauseTime" : "PT15M",
+          "WaitOnResourceSignals": "true"
+        }
+      },
+      "DependsOn" : [
+          "PrivateSubnetA", "PrivateSubnetB", "PrivateRouteA", "PrivateRouteB", "natGW0", "natGW1"
+      ]
+    },
+
+    "ELBSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Enable HTTP access on port 80",
+        "VpcId" : { "Ref" : "VPC" },
+        "SecurityGroupIngress" : [ {
+          "IpProtocol" : "tcp",
+          "FromPort" : "80",
+          "ToPort" : "80",
+          "CidrIp" : "0.0.0.0/0"
+        } ],
+        "SecurityGroupEgress" : [ {
+          "IpProtocol" : "tcp",
+          "FromPort" : "80",
+          "ToPort" : "80",
+          "CidrIp" : "0.0.0.0/0"
+        } ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "SNSTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "Subscription": [{
+          "Endpoint": { "Ref": "OpsEmail" },
+          "Protocol": "email"
+        }]
+      }
+    },
+
+    "EC2ScaleOutPolicy" : {
+      "Type" : "AWS::AutoScaling::ScalingPolicy",
+      "Properties" : {
+        "AdjustmentType" : "ChangeInCapacity",
+        "AutoScalingGroupName" : { "Ref" : "EC2ASGroup" },
+        "Cooldown" : "60",
+        "ScalingAdjustment" : "1"
+      }
+    },
+
+    "EC2ScaleInPolicy" : {
+      "Type" : "AWS::AutoScaling::ScalingPolicy",
+      "Properties" : {
+        "AdjustmentType" : "ChangeInCapacity",
+        "AutoScalingGroupName" : { "Ref" : "EC2ASGroup" },
+        "Cooldown" : "60",
+        "ScalingAdjustment" : "-1"
+      }
+    },
+
+    "CPUHighAlarm": {
+     "Type": "AWS::CloudWatch::Alarm",
+     "Properties": {
+        "AlarmDescription": "Scale-Out when CPU Util. goes above ScaleOutCPUUtil",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": { "Ref": "EC2ASPeriod" },
+        "EvaluationPeriods": "2",
+        "Threshold": { "Ref": "ScaleOutCPUUtil" },
+        "AlarmActions": [ { "Ref": "EC2ScaleOutPolicy" } ],
+        "Dimensions": [
+          {
+            "Name": "AutoScalingGroupName",
+            "Value": { "Ref": "EC2ASGroup" }
+          }
+        ],
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+
+    "CPULowAlarm": {
+     "Type": "AWS::CloudWatch::Alarm",
+     "Properties": {
+        "AlarmDescription": "Scale In when CPU Util. goes below ScaleInCPUUtil",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": { "Ref": "EC2ASPeriod" },
+        "EvaluationPeriods": "2",
+        "Threshold": { "Ref": "ScaleInCPUUtil" },
+        "AlarmActions": [ { "Ref": "EC2ScaleInPolicy" } ],
+        "Dimensions": [
+          {
+            "Name": "AutoScalingGroupName",
+            "Value": { "Ref": "EC2ASGroup" }
+          }
+        ],
+        "ComparisonOperator": "LessThanThreshold"
+      }
+    },
+
+    "EC2SecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Forward HTTP Traffic only from ELB",
+        "VpcId" : { "Ref" : "VPC" },
+        "SecurityGroupIngress" : [
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "80",
+            "ToPort" : "80",
+            "SourceSecurityGroupId" : { "Ref": "ELBSecurityGroup" }
+          }
+        ]
+      },
+      "DependsOn" : "VPC"
+    },
+
+    "LaunchConfig": {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "Metadata" : {
+        "Comment1" : "Install and configure the LAMP Stack",
+        "Comment2" : "The website content is downloaded from the CloudFormationPHPSample.zip file",
+
+        "AWS::CloudFormation::Init" : {
+          "config" : {
+            "packages" : {
+
+              "yum" : {
+                "mysql"            : [],
+                "httpd"            : [],
+                "php"              : [],
+                "php-mysql"        : []
+              }
+            },
+
+            "sources" : {
+              "/var/www/html" : { "Ref": "AppSource" }
+            },
+
+            "files" : {
+              "/usr/local/share/app/config.tar.gz" : {
+                "source" : { "Ref": "ConfigSource" },
+                "mode"   : "000644",
+                "owner"  : "root",
+                "group"  : "root"
+              },
+
+              "/usr/local/share/app/dump.sql" : {
+                "source" : { "Ref": "MySQLDump" },
+                "mode"   : "000644",
+                "owner"  : "root",
+                "group"  : "root"
+              },
+
+              "/usr/local/share/app/beforeinstall.sh" : {
+                "source" : { "Ref": "BeforeInstall" },
+                "mode"   : "000644",
+                "owner"  : "root",
+                "group"  : "root"
+              },
+
+              "/usr/local/share/app/afterinstall.sh" : {
+                "source" : { "Ref": "AfterInstall" },
+                "mode"   : "000644",
+                "owner"  : "root",
+                "group"  : "root"
+              },
+
+              "/etc/cfn/cfn-hup.conf" : {
+                "content" : { "Fn::Join" : [ "", [
+                  "[main]\n",
+                  "stack=", { "Ref" : "AWS::StackId" }, "\n",
+                  "region=", { "Ref" : "AWS::Region" }, "\n"
+                ]]},
+                "mode"    : "000400",
+                "owner"   : "root",
+                "group"   : "root"
+              },
+
+              "/etc/cfn/hooks.d/cfn-auto-reloader.conf" : {
+                "content": { "Fn::Join" : [ "", [
+                  "[cfn-auto-reloader-hook]\n",
+                  "triggers=post.update\n",
+                  "path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init\n",
+                  "action=/opt/aws/bin/cfn-init -v ",
+                  "         --stack ", { "Ref" : "AWS::StackName" },
+                  "         --resource LaunchConfig ",
+                  "         --region ", { "Ref" : "AWS::Region" }, "\n",
+                  "runas=root\n"
+                ]]}
+              }
+            },
+
+            "services" : {
+              "sysvinit" : {
+                "httpd" : {
+                  "enabled" : "true",
+                  "ensureRunning" : "true"
+                },
+                "cfn-hup" : {
+                  "enabled" : "true",
+                  "ensureRunning" : "true",
+                  "files" : [ "/etc/cfn/cfn-hup.conf", "/etc/cfn/hooks.d/cfn-auto-reloader.conf" ]
+                }
+              }
+            },
+
+            "commands" : {
+
+              "00 before install script (init)" : {
+                "command" : "sh /usr/local/share/app/beforeinstall.sh",
+                "env" : {
+                    "X_MYSQL_DUMP"        : "/usr/local/share/app/dump.sql",
+                    "X_WORK_DIR"          : "/usr/local/share/app",
+                    "X_WWW_PATH"          : "/var/www/html",
+                    "X_DATABASE_NAME"     : { "Ref" : "DBName" },
+                    "X_DATABASE_USER"     : { "Ref" : "DBUser" },
+                    "X_DATABASE_PASS"     : { "Ref" : "DBPassword" },
+                    "X_DATABASE_URI"      : { "Fn::GetAtt" : [ "MySQLDatabase", "Endpoint.Address" ] },
+                    "X_APPLICATION_NAME"  : { "Ref" : "AppName" },
+                    "X_ELB_HOSTNAME"      : { "Fn::GetAtt" : [ "ApplicationLoadBalancer", "DNSName" ] },
+                    "X_ADMIN_EMAIL"       : { "Ref" : "OpsEmail" },
+                    "X_ADMIN_USERNAME"    : { "Ref" : "LoginUsername" },
+                    "X_ADMIN_PASSWORD"    : { "Ref" : "LoginPassword" }
+                }
+              },
+
+              "01 Import dump.sql" : {
+                "command" : { "Fn::Join" : [ "", [
+                  "count=$(mysql"," -h", { "Fn::GetAtt": [ "MySQLDatabase", "Endpoint.Address" ] },
+                  " -u", { "Ref": "DBUser" }, " -p", { "Ref": "DBPassword" },
+                  " -e 'SELECT COUNT(DISTINCT table_name) FROM information_schema.columns WHERE table_schema = \"", { "Ref": "DBName" },
+                  "\";'", " | awk '{print $1}' | tail -1);",
+                  " if [ ${count} -eq 0 ]; then",
+                  " mysql", " -h", { "Fn::GetAtt": [ "MySQLDatabase", "Endpoint.Address" ] },
+                  " -u", { "Ref": "DBUser" }, " -p", { "Ref": "DBPassword" }," ", { "Ref": "DBName" }," < /usr/local/share/app/dump.sql;",
+                  " fi"
+                ]]}
+              },
+
+              "02 copying config files" : {
+                "command" : "tar xf /usr/local/share/app/config.tar.gz -C /var/www/html --strip 1"
+              },
+
+              "03 changing directory owner to apache" : {
+                "command" : "chown -R apache:apache /var/www/html"
+              },
+
+              "04 after install script" : {
+                "command" : "sh /usr/local/share/app/afterinstall.sh",
+                "env" : {
+                    "X_MYSQL_DUMP"        : "/usr/local/share/app/dump.sql",
+                    "X_WORK_DIR"          : "/usr/local/share/app",
+                    "X_WWW_PATH"          : "/var/www/html",
+                    "X_DATABASE_NAME"     : { "Ref" : "DBName" },
+                    "X_DATABASE_USER"     : { "Ref" : "DBUser" },
+                    "X_DATABASE_PASS"     : { "Ref" : "DBPassword" },
+                    "X_DATABASE_URI"      : { "Fn::GetAtt" : [ "MySQLDatabase", "Endpoint.Address" ] },
+                    "X_APPLICATION_NAME"  : { "Ref" : "AppName" },
+                    "X_ELB_HOSTNAME"      : { "Fn::GetAtt" : [ "ApplicationLoadBalancer", "DNSName" ] },
+                    "X_ADMIN_EMAIL"       : { "Ref" : "OpsEmail" },
+                    "X_ADMIN_USERNAME"    : { "Ref" : "LoginUsername" },
+                    "X_ADMIN_PASSWORD"    : { "Ref" : "LoginPassword" }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      "Properties": {
+        "AssociatePublicIpAddress" : "false",
+        "ImageId" : { "Fn::FindInMap" : [
+          "AWSRegionArch2AMI",
+          { "Ref" : "AWS::Region" },
+          { "Fn::FindInMap" : [
+            "AWSInstanceType2Arch",
+            { "Ref" : "InstanceType" },
+            "Arch"
+          ]}
+        ]},
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "SecurityGroups" : [ {"Ref" : "EC2SecurityGroup"} ],
+        "UserData" : { "Fn::Base64" : { "Fn::Join" : [ "", [
+             "#!/bin/bash -xe\n",
+             "yum update -y aws-cfn-bootstrap\n",
+
+             "# Install the files and packages from the metadata\n",
+             "/opt/aws/bin/cfn-init -v ",
+             "         --stack ", { "Ref" : "AWS::StackName" },
+             "         --resource LaunchConfig ",
+             "         --region ", { "Ref" : "AWS::Region" }, "\n",
+
+             "# Signal the status from cfn-init\n",
+             "/opt/aws/bin/cfn-signal -e $? ",
+             "         --stack ", { "Ref" : "AWS::StackName" },
+             "         --resource EC2ASGroup ",
+             "         --region ", { "Ref" : "AWS::Region" }, "\n"
+        ]]}}
+      },
+
+      "DependsOn" : ["IGWAttachment", "natGW0", "natGW1"]
+    }
+  }
+}
