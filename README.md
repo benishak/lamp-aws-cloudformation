@@ -28,6 +28,30 @@ Read more in the example/mybb_1812/Design.pdf
 
 [<img src="https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png">](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=lamp-stack&templateURL=https://s3.eu-central-1.amazonaws.com/mybb-cx/lamp.cf.template.json)
 
+
+## Parameters
+
+You need to specify
+- The Application source code (.tar.gz): make sure the source code is not in nested directories
+- The Application sql dump file (.sql): if your application requires installation and database population
+- The Application config files (.tar.gz) : if your application have config files
+- Beforeinstall Script : a bash script to execute before installation (check below)
+- Afterinstall Script : a bash script to execute after installation (check below)
+
+The Application config compressed file should be in this form
+
+```
+config.tar.gz/
+  /dir1
+    subdir1/
+    subdir2/
+    file1
+    file2
+    ...
+```
+
+**WARNING:** *all files are required if your application doesn't require any of these files, make sure to use empty **valid** files!*
+
 ## Deployment Hooks
 
 Beforeinstall -> MySQL Dump Restore -> Afterinstall
