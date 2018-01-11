@@ -145,28 +145,28 @@
     "ConfigSource": {
       "Type": "String",
       "Description": "config files (.tar.gz)",
-      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/mybb.tar.gz",
+      "Default": "https://github.com/benishak/lamp-aws-cloudformation/raw/master/example/mybb_1812/mybb.tar.gz",
       "ConstraintDescription": "Must be a valid url!"
     },
 
     "MySQLDump": {
       "Type": "String",
       "Description": "MySQL dump file (mybb.sql)",
-      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/mybb.sql",
+      "Default": "https://raw.githubusercontent.com/benishak/lamp-aws-cloudformation/master/example/mybb_1812/mybb.sql",
       "ConstraintDescription": "Must be a valid url!"
     },
 
     "BeforeInstall": {
       "Type": "String",
       "Description": "Before install script",
-      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/beforeinstall.sh",
+      "Default": "https://raw.githubusercontent.com/benishak/lamp-aws-cloudformation/master/example/mybb_1812/beforeinstall.sh",
       "ConstraintDescription": "Must be a valid url!"
     },
 
     "AfterInstall": {
       "Type": "String",
       "Description": "After install script",
-      "Default": "https://s3.eu-central-1.amazonaws.com/mybb-cx/afterinstall.sh",
+      "Default": "https://raw.githubusercontent.com/benishak/lamp-aws-cloudformation/master/example/mybb_1812/afterinstall.sh",
       "ConstraintDescription": "Must be a valid url!"
     },
 
